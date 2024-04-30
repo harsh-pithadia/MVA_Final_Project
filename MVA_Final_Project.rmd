@@ -1,0 +1,1117 @@
+---
+title: "Final Project"
+author: "hp621@scarletmail.rutgets.edu"
+date: "2024-04-28"
+output: html_document
+---
+
+#Spotify_YoutubeMusic_dataset
+
+1) Explain the data collection process 
+```{r}
+# I got a dataset from Kaggle 
+# The dataset is a combination of data from Spotify and Youtube and consists of several attributes. The data itself is from the top 10 songs of various popular artists.
+# The dependent variable of Stream was from Spotify which represents the number of times a particular song or track has been played or listened to on Spotify. 
+
+# #It includes 28 variables for each of the songs collected from spotify and youtube music. These variables are briefly described next:
+#Track: name of the song, as visible on the Spotify platform.
+#Artist: name of the artist.
+#Url_spotify: the Url of the artist.
+#Album: the album in wich the song is contained on Spotify.
+#Album_type: indicates if the song is relesead on Spotify as a single or contained in an album.
+#Url: a spotify link used to find the song through the API.
+#Danceability: describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable.
+#Energy: is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy.
+#Key: the key the track is in. Integers map to pitches using standard Pitch Class notation.
+#Loudness: the overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Loudness is the quality of a sound that is the primary psychological correlate of physical strength (amplitude). Values typically range between -60 and 0 db.#
+#Speechiness: detects the presence of spoken words in a track. The more exclusively speech-like the recording
+#Acousticness: a confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.
+#Instrumentalness: predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0.
+#Liveness: detects the presence of an audience in the recording. Higher liveness values represent an increased probability that the track was performed live. A value above 0.8 provides strong likelihood that the track is live.
+#Valence: a measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
+#Tempo: the overall estimated tempo of a track in beats per minute (BPM). In musical terminology, tempo is the speed or pace of a given piece and derives directly from the average beat duration.
+#Duration_ms: the duration of the track in millisecond.
+#Stream: number of streams of the song on Spotify.
+#Url_youtube: url of the video linked to the song on Youtube, if it have any.
+#Title: title of the videoclip on youtube.
+#Channel: name of the channel that have published the video.
+#Views: number of views.
+#Likes: number of likes.
+#Comments: number of comments.Description: description of the video on Youtube.
+#Licensed: Indicates whether the video represents licensed content, which means that the content was uploaded to a channel linked to a YouTube content partner and then claimed by that partner.
+#official_video: boolean value that indicates if the video found is the official video of the song.
+
+```
+
+#imported all the library
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(MASS)
+library(cluster)
+library(magrittr)
+library(NbClust)
+library(factoextra)
+library(psych)
+library(GGally)
+library(car)
+library(readr)
+library(caret)
+library(e1071)
+library(pROC)
+library(readr)
+library(Hotelling)
+library(corrplot)
+```
+#Import data set
+```{r}
+Spotify_Youtube <- read_csv("C:/Users/HARSH/Desktop/RU/SEM 2/MVA/MVA_Final_Project/Spotify_Youtube.csv")
+
+Spotify_Youtube <- as.data.frame(Spotify_Youtube)
+dim(Spotify_Youtube)
+colnames(Spotify_Youtube)
+str(Spotify_Youtube)
+
+
+```
+
+
+```{r}
+dependent_columns <- c(6,8:18, 22:24, 26, 28)
+
+Spotify_Youtube_new<- Spotify_Youtube[, dependent_columns]
+
+Spotify_Youtube_new
+
+dim(Spotify_Youtube_new)
+colnames(Spotify_Youtube_new)
+str(Spotify_Youtube_new)
+summary(Spotify_Youtube_new)
+```
+#Data Cleaning
+```{r}
+Spotify_Youtube_new[!complete.cases(Spotify_Youtube_new), ]
+
+sapply(Spotify_Youtube_new, function(x) mean(is.na(x)) * 100)
+
+Spotify_Youtube_new <- na.omit(Spotify_Youtube_new)
+```
+```{r}
+sampled_data <- Spotify_Youtube_new[sample(nrow(Spotify_Youtube_new), 100), ]
+
+
+str(sampled_data)
+summary(sampled_data)
+```
+#This is the final sampled data set that we will use to in data analysis and visualisation
+
+#Let us explore the data set and find which all features will help us in the analysis most
+
+```{r}
+sampled_data %>%
+  dplyr::select(1:17) %>%
+  pivot_longer(everything()) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30, color = "black", fill = "skyblue")+
+  facet_wrap(~name, scales = "free")
+```
+
+```{r}
+corr_plot_data <- sampled_data %>% dplyr::select(Album_type,Danceability, Energy, Key, Loudness, Speechiness, Acousticness,Instrumentalness, Liveness, Valence, Tempo,Licensed, Duration_ms,Likes,Comments,Views,Stream)
+
+corr_matrix <- cor(corr_plot_data)
+
+corrplot(corr_matrix, 
+         method = "color",  
+         type = "upper", 
+         order = "hclust",
+         diag = TRUE,
+         addCoef.col = TRUE,
+         number.cex = 0.55,
+         tl.srt = 60)
+
+
+
+```
+#Likes,Comments are positively correlated which states they are the most important factor in the data which can prove stream and views can be gained
+#accousticness,Insrumentalness and loudness are highly negative correlated which gives us hint that they depend on each other in some manner 
+#lets find out more for our important factors
+
+
+```{r}
+boxplot(sampled_data$Views, main = "Distribution of Views", xlab = "Number of Views", col = "skyblue")
+boxplot(sampled_data$Comments, main = "Distribution of Comments", xlab = "Number of Comments",col = "skyblue")
+boxplot(sampled_data$Likes, main = "Distribution of Likes", xlab = "Number of Likes",col = "skyblue")
+boxplot(sampled_data$Stream, main = "Distribution of Streams", xlab = "Number of Streams",col = "skyblue")
+```
+```{r}
+temp <- sampled_data[, 13:16]
+
+temp1 <- sampled_data
+
+for (col in colnames(temp)) {
+  Q1 <- quantile(temp1[[col]], 0.25, na.rm = TRUE)
+  Q3 <- quantile(temp1[[col]], 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+
+  outliers <- temp1[[col]] < (Q1 - 1.5 * IQR) | temp1[[col]] > (Q3 + 1.5 * IQR)
+
+  temp1 <- temp1[!outliers, ]
+}
+
+
+boxplot(temp1$Views, main = "Distribution of Views", xlab = "Number of Views", col = "skyblue")
+boxplot(temp1$Comments, main = "Distribution of Comments", xlab = "Number of Comments",col = "skyblue")
+boxplot(temp1$Likes, main = "Distribution of Likes", xlab = "Number of Likes",col = "skyblue")
+boxplot(temp1$Stream, main = "Distribution of Streams", xlab = "Number of Streams",col = "skyblue")
+```
+#The distributions are easier to visualize now; however, they are still all right skewed which will have some implications with the assumptions of the analyses and models we plan to perform. 
+
+
+
+2) Exploratory Data Analysis and Visualizations
+
+Univariate analysis
+2a) Finding means of each column 
+```{r}
+#MEAN
+
+sampled_data_mean <- colMeans(sampled_data,na.rm = TRUE)
+
+sampled_data_mean
+```
+2b) Covariance matrix for all columns in the data
+```{r}
+cor_matrix <- cor(sampled_data[, c("Danceability", "Energy", "Key", "Loudness", "Speechiness", "Acousticness", "Instrumentalness", "Liveness", "Valence", "Tempo", "Duration_ms","Licensed", "Views", "Likes", "Comments", "Stream")])
+
+# Display the correlation matrix
+print(cor_matrix)
+
+# Consider removing highly correlated variables
+
+#Covariance
+sampled_data_S <- cov(sampled_data)
+
+```
+
+2c) Mahalanobis distances for each observation: To identify outlier or observations that are unusual relative to the overall distribution of the data. The distance is also used in clustering algorithms, like k-means clustering.
+```{r}
+Mahanabolisdist <- apply(sampled_data, MARGIN = 1,
+  function(row) t(row - sampled_data_mean) %*% ginv(sampled_data_S) %*% (row - sampled_data_mean))
+
+
+Mahanabolisdist
+```
+```{r}
+
+qqnorm(sampled_data$Album_type, main = "Album_type")
+qqline(sampled_data$Album_type)
+
+
+qqnorm(sampled_data$Danceability, main = "Danceability")
+qqline(sampled_data$Danceability)
+
+qqnorm(sampled_data$Energy, main = "Energy")
+qqline(sampled_data$Energy)
+
+qqnorm(sampled_data$Key, main = "Key")
+qqline(sampled_data$Key)
+
+qqnorm(sampled_data$Loudness, main = "Loudness")
+qqline(sampled_data$Loudness)
+
+qqnorm(sampled_data$Speechiness, main = "Speechiness")
+qqline(sampled_data$Speechiness)
+
+qqnorm(sampled_data$Acousticness, main = "Acousticness")
+qqline(sampled_data$Acousticness)
+
+qqnorm(sampled_data$Instrumentalness, main = "Instrumentalness")
+qqline(sampled_data$Instrumentalness)
+
+qqnorm(sampled_data$Liveness, main = "Liveness")
+qqline(sampled_data$Liveness)
+
+qqnorm(sampled_data$Valence, main = "Valence")
+qqline(sampled_data$Valence)
+
+qqnorm(sampled_data$Tempo, main = "Tempo")
+qqline(sampled_data$Tempo)
+
+qqnorm(sampled_data$Duration_ms, main = "Duration_ms")
+qqline(sampled_data$Duration_ms)
+
+qqnorm(sampled_data$Views, main = "Views")
+qqline(sampled_data$Views)
+
+qqnorm(sampled_data$Likes, main = "Likes")
+qqline(sampled_data$Likes)
+
+qqnorm(sampled_data$Stream, main = "Stream")
+qqline(sampled_data$Stream)
+
+qqnorm(sampled_data$Licensed, main = "Licensed")
+qqline(sampled_data$Licensed)
+
+qqnorm(sampled_data$Comments, main = "Comments")
+qqline(sampled_data$Comments)
+```
+
+```{r}
+
+var.test(sampled_data$Album_type==0,sampled_data$Album_type==1)
+
+```
+the analysis suggests that there is no significant difference in variances between the groups represented by Album_type 0 and 1, as indicated by the high p-value and the confidence interval that includes 1.
+
+```{r}
+with(data = sampled_data,t.test(Danceability[Album_type==0],Danceability[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Energy[Album_type==0],Energy[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Key[Album_type==0],Key[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Loudness[Album_type==0],Loudness[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Speechiness[Album_type==0],Speechiness[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Acousticness[Album_type==0],Acousticness[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Instrumentalness[Album_type==0],Instrumentalness[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Liveness[Album_type==0],Liveness[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Valence[Album_type==0],Valence[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Tempo[Album_type==0],Tempo[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Duration_ms[Album_type==0],Duration_ms[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Views[Album_type==0],Views[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Likes[Album_type==0],Likes[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Comments[Album_type==0],Comments[Album_type==1],var.equal=TRUE))
+
+with(data = sampled_data,t.test(Stream[Album_type==0],Stream[Album_type==1],var.equal=TRUE))
+```
+where a lower p-value indicates a stronger association between the feature and the album type. Therefore, factors with lower p-values are considered more related to the album type.
+
+Stream also show a statistically significant difference with a p-value of 0.04173, indicating that there is a notable distinction in the mean streaming numbers between the two album types.
+
+Speechiness: p-value = 0.433
+Valence: p-value = 0.6212
+Likes: p-value = 0.851
+Comments: p-value = 0.784
+These features have relatively higher p-values, suggesting that there is weaker evidence to reject the null hypothesis that there is no difference in means between the two album types for these features. 
+
+
+
+```{r}
+# Select the predictor variables
+predictors <- c("Danceability", "Energy", "Key", "Loudness", "Speechiness", "Acousticness", "Instrumentalness", "Liveness", "Valence", "Tempo", "Duration_ms","Licensed", "Views", "Likes", "Comments", "Stream")
+
+# Create a matrix of predictors
+X <- as.matrix(sampled_data[, predictors])
+
+# Standardize or scale your variables
+scaled_data <- scale(X)
+
+# Perform the hotelling.test on the scaled data
+t2test <- hotelling.test(scaled_data ~ Album_type, data = sampled_data)
+
+
+scaledata <- as.data.frame(scale(sampled_data[c("Album_type","Danceability", "Energy", "Key", "Loudness", "Speechiness", "Acousticness", "Instrumentalness", "Liveness", "Valence", "Tempo", "Duration_ms","Licensed","Views", "Likes", "Comments", "Stream")]))
+t2test <- hotelling.test(cbind(Danceability, Energy, Key, Loudness, Speechiness, Acousticness, Instrumentalness, Liveness, Valence, Tempo, Duration_ms, Views, Likes, Comments, Stream) ~ Album_type, data = scaledata)
+
+cat("T2 statistic =",t2test$stat[[1]],"\n")
+
+print(t2test)
+```
+```{r}
+stand <- scale(sampled_data[,2:17])
+stand
+```
+
+```{r}
+attach(sampled_data)
+matalbum<- stand[Album_type == 0,]
+matalbum
+
+matsingle<- stand[Album_type == 1,]
+matsingle
+
+vecmedianalbum <- apply(matalbum, 2, median)
+vecmediansingle <- apply(matsingle, 2, median)
+
+vecmedianalbum
+vecmediansingle
+
+matabsdevalbum <- abs(matalbum - matrix(rep(vecmedianalbum,nrow(matalbum)),nrow=nrow(matalbum), byrow=TRUE))
+
+matabsdevsingle <- abs(matsingle - matrix(rep(vecmediansingle,nrow(matsingle)),nrow=nrow(matsingle), byrow=TRUE))
+
+
+matabsdev.all <- rbind(matabsdevalbum,matabsdevsingle)
+matabsdev.all <- data.frame(Album_type, matabsdev.all)
+
+t.test(matabsdev.all$Danceability[Album_type == 1],matabsdev.all$Danceability[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Energy[Album_type == 1],matabsdev.all$Energy[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Key[Album_type == 1],matabsdev.all$Key[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Loudness[Album_type == 1],matabsdev.all$Loudness[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Speechiness[Album_type == 1],matabsdev.all$Speechiness[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Acousticness[Album_type == 1],matabsdev.all$Acousticness[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Instrumentalness[Album_type == 1],matabsdev.all$Instrumentalness[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Liveness[Album_type == 1],matabsdev.all$Liveness[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Valence[Album_type == 1],matabsdev.all$Valence[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Tempo[Album_type == 1],matabsdev.all$Tempo[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Views[Album_type == 1],matabsdev.all$Views[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Likes[Album_type == 1],matabsdev.all$Likes[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Comments[Album_type == 1],matabsdev.all$Comments[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Stream[Album_type == 1],matabsdev.all$Stream[Album_type == 0], alternative="less",var.equal = TRUE)
+
+t.test(matabsdev.all$Duration_ms[Album_type == 1],matabsdev.all$Duration_ms[Album_type == 0], alternative="less",var.equal = TRUE)
+
+
+
+
+```
+
+```{r}
+#Anova
+summary(aov(Danceability~Album_type))
+summary(aov(Energy~Album_type))
+summary(aov(Key~Album_type))
+summary(aov(Loudness~Album_type))
+summary(aov(Speechiness~Album_type))
+summary(aov(Acousticness~Album_type))
+summary(aov(Instrumentalness~Album_type))
+summary(aov(Liveness~Album_type))
+summary(aov(Valence~Album_type))
+summary(aov(Tempo~Album_type))
+summary(aov(Duration_ms~Album_type))
+summary(aov(Licensed~Album_type))
+summary(aov(Likes~Album_type))
+summary(aov(Comments~Album_type))
+summary(aov(Views~Album_type))
+summary(aov(Stream~Album_type))
+
+```
+
+
+Duration_ms: This feature has a very low p-value of 0.00291, indicating a significant difference in the mean duration between album types.
+Stream: With a p-value of 0.0245, the difference in mean streaming numbers between album types is statistically significant.
+Energy: Although its p-value is slightly higher at 0.0668, it still suggests a notable difference in mean energy levels between album types.
+Since this feature has a p-value well above the typical threshold of 0.05, it suggests that there is no statistically significant difference in means between album types and Likes, Comments, Instrumentalness, Liveness, Acousticness, Tempo: These features all have p-values greater than 0.1, suggesting that the differences in mean values between album types for these features are not statistically significant.
+
+
+
+#PCA Analysis
+```{r}
+cor(sampled_data[-1])
+```
+
+```{r}
+PCA <- prcomp(sampled_data[-1],scale=TRUE)
+PCA
+summary(PCA)
+```
+
+
+Based on the cumulative proportion of variance, you can see that around 85% of the variance is explained by the first 8 components (PC1 to PC8). Therefore, considering the cumulative proportion of variance, you might choose to retain these 8 principal components.
+Choosing a higher number of components will generally capture more variance but may also increase the complexity of the model and the risk of overfitting, so it's essential to strike a balance
+
+
+
+
+```{r}
+str(PCA)
+(eigen_ <- PCA$sdev^2)
+eigen_
+
+sumlambdas <- sum(eigen_)
+sumlambdas
+
+propvar <- eigen_/sumlambdas
+propvar
+
+cumvar_ <- cumsum(propvar)
+cumvar_
+
+matlambdas <- rbind(eigen_,propvar,cumvar_)
+rownames(matlambdas) <- c("Eigenvalues","Prop. variance","Cum. prop. variance")
+round(matlambdas,4)
+summary(PCA)
+PCA$rotation
+print(PCA)
+```
+```{r}
+## Sample scores stored 
+
+PCA$x
+# Identifying the scores by their Album type
+attach(sampled_data)
+PCA_typ <- cbind(data.frame(Album_type),PCA$x)
+
+PCA_typ
+
+```
+```{r}
+# Means of scores for all the PC's classified by Album type
+tabmeansPC <- aggregate(PCA_typ[,2:17],by=list(Album_type=sampled_data$Album_type),mean)
+tabmeansPC
+tabmeansPC <- tabmeansPC[rev(order(tabmeansPC$Album_type)),]
+tabmeansPC
+tabfmeans <- t(tabmeansPC[,-1])
+tabfmeans
+colnames(tabfmeans) <- t(as.vector(tabmeansPC[1]$Album_type))
+tabfmeans
+```
+
+```{r}
+# Standard deviations of scores for all the PC's classified by Album type
+tabsdsPC <- aggregate(PCA_typ[,2:17],by=list(Album_type=sampled_data$Album_type),sd)
+tabfsds <- t(tabsdsPC[,-1])
+colnames(tabfsds) <- t(as.vector(tabsdsPC[1]$Album_type))
+tabfsds
+t.test(PC1~sampled_data$Album_type,data=PCA_typ)
+t.test(PC2~sampled_data$Album_type,data=PCA_typ)
+t.test(PC3~sampled_data$Album_type,data=PCA_typ)
+t.test(PC4~sampled_data$Album_type,data=PCA_typ)
+t.test(PC5~sampled_data$Album_type,data=PCA_typ)
+t.test(PC6~sampled_data$Album_type,data=PCA_typ)
+t.test(PC7~sampled_data$Album_type,data=PCA_typ)
+t.test(PC8~sampled_data$Album_type,data=PCA_typ)
+t.test(PC9~sampled_data$Album_type,data=PCA_typ)
+t.test(PC10~sampled_data$Album_type,data=PCA_typ)
+t.test(PC11~sampled_data$Album_type,data=PCA_typ)
+t.test(PC12~sampled_data$Album_type,data=PCA_typ)
+t.test(PC13~sampled_data$Album_type,data=PCA_typ)
+t.test(PC14~sampled_data$Album_type,data=PCA_typ)
+t.test(PC15~sampled_data$Album_type,data=PCA_typ)
+
+```
+```{r}
+## F ratio tests
+var.test(PC1~sampled_data$Album_type,data=PCA_typ)
+var.test(PC2~sampled_data$Album_type,data=PCA_typ)
+var.test(PC3~sampled_data$Album_type,data=PCA_typ)
+var.test(PC4~sampled_data$Album_type,data=PCA_typ)
+var.test(PC5~sampled_data$Album_type,data=PCA_typ)
+var.test(PC6~sampled_data$Album_type,data=PCA_typ)
+var.test(PC7~sampled_data$Album_type,data=PCA_typ)
+var.test(PC8~sampled_data$Album_type,data=PCA_typ)
+var.test(PC9~sampled_data$Album_type,data=PCA_typ)
+var.test(PC10~sampled_data$Album_type,data=PCA_typ)
+var.test(PC11~sampled_data$Album_type,data=PCA_typ)
+var.test(PC12~sampled_data$Album_type,data=PCA_typ)
+var.test(PC13~sampled_data$Album_type,data=PCA_typ)
+var.test(PC14~sampled_data$Album_type,data=PCA_typ)
+var.test(PC15~sampled_data$Album_type,data=PCA_typ)
+
+
+```
+```{r}
+# Plotting the scores for the first,second and third components
+
+library(plot3D)
+
+scatter3D(PCA_typ$PC1,PCA_typ$PC2,PCA_typ$PC3,xlab = "PC1", ylab = "PC2", zlab = "PC3",type="h")
+
+
+plot(PCA_typ$PC1, PCA_typ$PC2,pch=ifelse(PCA_typ$Album_type == 1,0,1),xlab="PC1", ylab="PC2", main="Album vs Single")
+
+plot(PCA_typ$PC1, PCA_typ$PC3,pch=ifelse(PCA_typ$Album_type == 1,0,1),xlab="PC1", ylab="PC3", main="Album vs Single")
+
+plot(PCA_typ$PC1, PCA_typ$PC4,pch=ifelse(PCA_typ$Album_type == 1,0,1),xlab="PC1", ylab="PC4", main="Album vs Single")
+
+plot(PCA_typ$PC3, PCA_typ$PC2,pch=ifelse(PCA_typ$Album_type == 1,0,1),xlab="PC3", ylab="PC2", main="Album vs Single")
+
+plot(PCA_typ$PC3, PCA_typ$PC4,pch=ifelse(PCA_typ$Album_type == 1,0,1),xlab="PC3", ylab="PC4", main="Album vs Single")
+
+
+plot(eigen_, xlab = "Component number", ylab = "Component variance", type = "l", main = "Scree diagram")
+plot(log(eigen_), xlab = "Component number",ylab = "log(Component variance)", type="l",main = "Log(eigenvalue) diagram")
+summary(PCA)
+
+diag(cov(PCA$x))
+
+
+
+xlim <- range(PCA$x[,1])
+PCA$x[,1]
+PCA$x
+plot(PCA$x,xlim=xlim,ylim=xlim)
+PCA$rotation[,1]
+PCA$rotation
+PCA$x
+plot(PCA)
+```
+
+We can see that there is the large fall from PCA1 to PCA3 and movinf from PCA3 itss grdually decreases where the PCA14-PCA17 is least from all
+
+
+
+
+#clustering analysis
+```{r}
+matstd.data <- scale(sampled_data[,-1])
+
+# Creating a (Euclidean) distance matrix of the standardized data                     
+dist.data <- dist(matstd.data, method="euclidean")
+colnames(dist.data) <- rownames(dist.data)
+
+# Invoking hclust command (cluster analysis by single linkage method)      
+clusdata.nn <- hclust(dist.data, method = "single")
+
+#dendogram
+#plot(as.dendrogram(clusdata.nn),ylab="Distance between independent variables",
+#     main="Dendrogram. People employed in nine industry groups \n  from European countries")
+
+options(repr.plot.width=30, repr.plot.height=10)  # Adjust the plot size as needed
+plot(as.dendrogram(clusdata.nn), ylab="Distance between independent variables",
+     main="Dendrogram. p")
+
+```
+```{r}
+(agn.data <- agnes(sampled_data, metric="euclidean", stand=TRUE, method = "single"))
+```
+```{r}
+plot(as.dendrogram(agn.data), xlab= "Distance between ",xlim=c(8,0),
+     horiz = TRUE,main="Dendrogram ")
+```
+Non-hierarchical clustering/ K-means clustering
+```{r}
+# K-means, k=2, 3, 4, 5, 6
+# Centers (k's) are numbers thus, 10 random sets are chosen
+
+(kmeans2.data <- kmeans(matstd.data,2,nstart = 10))
+```
+```{r}
+# Computing the percentage of variation accounted for. Two clusters
+perc.var.2 <- round(100*(1 - kmeans2.data$betweenss/kmeans2.data$totss),1)
+names(perc.var.2) <- "Perc. 2 clus"
+perc.var.2
+```
+
+```{r}
+# Computing the percentage of variation accounted for. Three clusters
+(kmeans3.data <- kmeans(matstd.data,3,nstart = 10))
+```
+
+```{r}
+perc.var.3 <- round(100*(1 - kmeans3.data$betweenss/kmeans3.data$totss),1)
+names(perc.var.3) <- "Perc. 3 clus"
+perc.var.3
+```
+```{r}
+# Computing the percentage of variation accounted for. Four clusters
+(kmeans4.data <- kmeans(matstd.data,4,nstart = 10))
+```
+```{r}
+perc.var.4 <- round(100*(1 - kmeans4.data$betweenss/kmeans4.data$totss),1)
+names(perc.var.4) <- "Perc. 4 clus"
+perc.var.4
+```
+```{r}
+# Computing the percentage of variation accounted for. Five clusters
+(kmeans5.data <- kmeans(matstd.data,5,nstart = 10))
+```
+```{r}
+perc.var.5 <- round(100*(1 - kmeans5.data$betweenss/kmeans5.data$totss),1)
+names(perc.var.5) <- "Perc. 5 clus"
+perc.var.5
+```
+```{r}
+# Computing the percentage of variation accounted for. Six clusters
+(kmeans6.data <- kmeans(matstd.data,6,nstart = 10))
+```
+```{r}
+perc.var.6 <- round(100*(1 - kmeans6.data$betweenss/kmeans6.data$totss),1)
+names(perc.var.6) <- "Perc. 6 clus"
+perc.var.6
+```
+```{r}
+# Computing the percentage of variation accounted for. Seven clusters
+(kmeans7.data <- kmeans(matstd.data,7,nstart = 10))
+```
+```{r}
+perc.var.7 <- round(100*(1 - kmeans7.data$betweenss/kmeans7.data$totss),1)
+names(perc.var.7) <- "Perc. 7 clus"
+perc.var.7
+```
+```{r}
+# Computing the percentage of variation accounted for. Eight clusters
+(kmeans8.data <- kmeans(matstd.data,8,nstart = 10))
+```
+
+```{r}
+perc.var.8 <- round(100*(1 - kmeans8.data$betweenss/kmeans8.data$totss),1)
+names(perc.var.8) <- "Perc. 8 clus"
+perc.var.8
+```
+```{r}
+# Computing the percentage of variation accounted for. Nine clusters
+(kmeans9.data <- kmeans(matstd.data,9,nstart = 10))
+```
+```{r}
+perc.var.9 <- round(100*(1 - kmeans9.data$betweenss/kmeans9.data$totss),1)
+names(perc.var.9) <- "Perc. 9 clus"
+perc.var.9
+```
+```{r}
+# Computing the percentage of variation accounted for. Ten clusters
+(kmeans10.data <- kmeans(matstd.data,10,nstart = 10))
+```
+```{r}
+perc.var.10 <- round(100*(1 - kmeans10.data$betweenss/kmeans10.data$totss),1)
+names(perc.var.10) <- "Perc. 6 clus"
+perc.var.10
+```
+
+```{r}
+Variance_List <- c(perc.var.2,perc.var.3,perc.var.4,perc.var.5,perc.var.6,perc.var.7,perc.var.8,perc.var.9,perc.var.10)
+
+Variance_List
+
+
+```
+We choose 4 clusters as optimum for clutering
+
+
+```{r}
+plot(Variance_List)
+```
+
+here isn't a very clear "elbow" point, but there's a significant drop in variance explained between 3 clusters and 4 clusters. After that, the decrease is more gradual.
+
+
+```{r}
+optimal_num_clusters <- 4
+
+#K-means clustering with the optimal number of clusters
+kmeans_model <- kmeans(matstd.data, optimal_num_clusters, nstart = 10)
+
+cluster_membership <- kmeans_model$cluster
+
+# Print the cluster membership for each data point
+print(cluster_membership)
+```
+
+```{r}
+#Scatter plot of the data with clusters colored by membership
+plot(matstd.data[, 1], matstd.data[, 2], 
+     col = kmeans_model$cluster, pch = 16, 
+     xlab = "Variable 1", ylab = "Variable 2",
+     main = "K-means Clustering")
+
+# Adding cluster centers to the plot
+points(kmeans_model$centers[, 1], kmeans_model$centers[, 2], col = 1:optimal_num_clusters, pch = 3, cex = 2)
+
+# Adding legend
+legend("topleft", legend = paste("C", 1:optimal_num_clusters), col = 1:optimal_num_clusters, pch = 16, cex = 0.8, title = "Clusters")
+```
+
+```{r}
+gap_stat <- clusGap(matstd.data, FUN = kmeans, nstart = 10, K.max = 10, B = 50)
+
+fviz_gap_stat(gap_stat)
+```
+
+```{r}
+set.seed(123)
+## Perform K-means clustering
+km.res7 <- kmeans(matstd.data, 7, nstart = 25)  
+# Visualize clusters
+fviz_cluster(km.res7, data = matstd.data,  
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal())
+```
+```{r}
+km.res8 <- kmeans(matstd.data, 8, nstart = 25)  
+# Visualize clusters
+fviz_cluster(km.res8, data = matstd.data,  
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal())
+```
+
+```{r}
+km.res4 <- kmeans(matstd.data, 4, nstart = 25)  
+# Visualize clusters
+fviz_cluster(km.res4, data = matstd.data,  
+             ellipse.type = "convex",
+             palette = "jco",
+             ggtheme = theme_minimal())
+```
+```{r}
+# Perform Hierarchical Clustering
+res.hc <- matstd.data %>% scale() %>% dist(method = "euclidean") %>%
+  hclust(method = "ward.D2")  # Change matstd.data to your dataset
+
+# Visualize the Dendrogram
+fviz_dend(res.hc, k = 4,  # Cut in four groups
+          cex = 0.5,  # label size
+          k_colors = c("#2E9FDF", "#00AFBB", "#E7B800","grey","red","pink","violet","green","purple"),
+          color_labels_by_k = TRUE,  # color labels by groups
+          rect = TRUE)
+```
+
+
+
+#Factor Analysis
+```{r}
+matstd.data <- scale(sampled_data[,-1])
+fa.parallel(sampled_data[-1])
+```
+Parallel analysis suggests that the number of factors =  3  and the number of components =  2
+
+
+```{r}
+fit.pc <- principal(sampled_data[-1], nfactors=3, rotate="varimax")
+fit.pc
+```
+```{r}
+round(fit.pc$values, 2)
+fit.pc$loadings
+```
+```{r}
+fa.plot(fit.pc)
+```
+```{r}
+fa.diagram(fit.pc)
+```
+
+```{r}
+vss(sampled_data[-1])
+```
+```{r}
+biplot(fit.pc)
+```
+Using Factor Analysis we can have three components
+1) with all essential music component as loudness,energy, danceablity, valence ,tempo,intrumentalness, acoustiness
+2) duration_ms and key can be states as music time 
+3)the last most important factor artist look up is views,likes,comments and stream
+
+speechiness and liveness can be ignored
+
+
+#Multiple Regression
+
+```{r}
+str(sampled_data)
+scale(sampled_data)
+
+
+fit <- lm(Stream~Views+Likes+Comments, data = sampled_data)
+
+summary(fit)
+```
+Intercept: The intercept represents the estimated streaming numbers when all independent variables (Views, Likes, Comments) are zero. In this case, it's 7.833e+07 (approximately 78,330,000).
+Views, Likes, Comments: These coefficients represent the estimated change in streaming numbers for a one-unit increase in each respective independent variable, holding all other variables constant. For example:
+For every additional view (Views), streaming numbers decrease by approximately 0.7384 units.
+For every additional like (Likes), streaming numbers increase by approximately 275.5 units.
+For every additional comment (Comments), streaming numbers decrease by approximately 3031 units.
+
+the model suggests that Views, Likes, and potentially Comments are significant predictors of streaming numbers, and the model as a whole is statistically significant in explaining the variance in streaming numbers. However, there may be other factors not included in the model that also influence streaming numbers.
+
+
+
+
+
+```{r}
+coefficients(fit)
+```
+```{r}
+ggpairs(data=sampled_data, title="Music Data")
+confint(fit,level=0.95)
+fitted(fit)
+residuals(fit)
+```
+```{r}
+#Anova Table
+anova(fit)
+vcov(fit)
+cov2cor(vcov(fit))
+temp <- influence.measures(fit)
+temp
+plot(fit)
+```
+
+```{r}
+# Global test of model assumptions
+library(gvlma)
+
+gvmodel <- gvlma(fit)
+summary(gvmodel)
+fit
+summary(fit)
+fit1 <- fit
+fit2 <- lm(Stream ~ Likes + Comments , data = sampled_data)
+```
+Views, Likes, Comments: These coefficients represent the estimated change in streaming numbers for a one-unit increase in each respective independent variable, holding all other variables constant. Specifically:
+For every additional view (Views), streaming numbers decrease by approximately 0.7384 units.
+For every additional like (Likes), streaming numbers increase by approximately 275.5 units.
+For every additional comment (Comments), streaming numbers decrease by approximately 3031 unit
+
+
+
+```{r}
+# compare models
+anova(fit1, fit2)
+
+step <- stepAIC(fit, direction="both")
+step$anova # display results
+```
+
+```{r}
+library(leaps)
+leaps<-regsubsets(Stream~Likes+Views+Comments,data=sampled_data,nbest=10)
+leaps
+# view results
+plot(leaps)
+plot(leaps,scale="r2")
+plot(leaps,scale="bic")
+summary(leaps)
+```
+```{r}
+library(relaimpo)
+calc.relimp(fit,type=c("lmg","last","first","pratt"),
+            rela=TRUE)
+```
+
+```{r}
+summary(fit)
+predict.lm(fit, data.frame(Likes=200 ,Comments=50,Views=2000) )
+```
+
+```{r}
+rsquared <- summary(fit)$r.squared
+cat("R-squared:", rsquared, "\n")
+
+
+adjusted_rsquared <- summary(fit)$adj.r.squared
+cat("Adjusted R-squared:", adjusted_rsquared, "\n")
+```
+```{r}
+crPlots(fit)
+spreadLevelPlot(fit)
+```
+
+#Logistic Regression
+```{r}
+sampled_data[sampled_data$Album_type == 0,]$Album_type <- "Album"
+sampled_data[sampled_data$Album_type == 1,]$Album_type <- "Single"
+
+sampled_data$Album_type <- as.factor(sampled_data$Album_type)
+sampled_data$Licensed <- as.factor(sampled_data$Licensed)
+```
+
+```{r}
+xtabs(~Album_type +Views, data=sampled_data)
+xtabs(~Album_type +Likes,data = sampled_data)
+xtabs(~Album_type +Comments, data=sampled_data)
+xtabs(~Album_type +Stream,data = sampled_data)
+xtabs(~Album_type +Licensed,data = sampled_data)
+```
+```{r}
+logistic_simple <- glm(Album_type~ Views , data=sampled_data, family = 'binomial')
+summary(logistic_simple)
+```
+ the model does not provide strong evidence that Views significantly predicts Album_type based on the given data.
+
+
+```{r}
+sampled_data <- data.frame(sampled_data)
+predicted.data <- data.frame(probability.of.Album_type = logistic_simple$fitted.values,
+                              Views = sampled_data$Views)
+print(predicted.data)
+```
+
+```{r}
+ggplot(data=predicted.data ,aes(x=Views, y=probability.of.Album_type))+ geom_point(aes(color=Views), size=5) + xlab("Views") + ylab("Predicted probability of getting views")
+
+xtabs(~ probability.of.Album_type + Views , data=predicted.data)
+```
+
+```{r}
+logistic <- glm(Album_type ~ ., data=sampled_data, family="binomial")
+summary(logistic)
+```
+```{r}
+predicted.data <- data.frame(probability.of.ls=logistic$fitted.values,ls=sampled_data$Album_type)
+predicted.data <- predicted.data[order(predicted.data$probability.of.ls, decreasing=FALSE),]
+predicted.data$rank <- 1:nrow(predicted.data)
+
+ggplot(data=predicted.data, aes(x=rank, y=probability.of.ls)) +
+geom_point(aes(color=ls), alpha=1, shape=4, stroke=2) +
+xlab("Index") +
+ylab("Predicted probability of getting a views")
+```
+```{r}
+conf_mat <- table(Actual = sampled_data$Album_type, Predicted = ifelse(logistic$fitted.values > 0.5, "Single", "Album"))
+print(conf_mat)
+```
+
+```{r}
+# Calculate accuracy
+accuracy <- sum(diag(conf_mat)) / sum(conf_mat)
+print(paste("Accuracy:", accuracy))
+```
+
+```{r}
+# Calculate precision
+precision <- conf_mat["Single", "Single"] / sum(conf_mat[, "Single"])
+print(paste("Precision:", precision))
+
+```
+```{r}
+# Calculate precision
+precision <- conf_mat["Album", "Album"] / sum(conf_mat[, "Album"])
+print(paste("Precision:", precision))
+```
+```{r}
+# Calculate recall
+recall <- conf_mat["Single", "Single"] / sum(conf_mat["Single", ])
+print(paste("Recall:", recall))
+```
+
+```{r}
+# Calculate recall
+recall <- conf_mat["Album", "Album"] / sum(conf_mat["Album", ])
+print(paste("Recall:", recall))
+```
+
+```{r}
+roc_obj <- roc(sampled_data$Album_type, logistic$fitted.values)
+plot(roc_obj, xlab="False Positive Percentage", ylab="True Postive Percentage", legacy.axes=TRUE, col="#377eb8", lwd=4, percent=TRUE, print.auc=TRUE)
+
+```
+#Discriminant_Analysis
+```{r}
+sampled_data$Album_type<-as.factor(sampled_data$Album_type)
+
+str(sampled_data)
+```
+LDA Model with Train and Test Split
+Splitting the dataset into Training and Test
+
+
+```{r}
+set.seed(42)
+
+smp_size_raw <- floor(0.75 * nrow(sampled_data))
+
+train_ind_raw <- sample(nrow(sampled_data), size = smp_size_raw)
+
+#Creating Train and Test Data
+train_raw.df <- as.data.frame(sampled_data[train_ind_raw, ])
+test_raw.df <- as.data.frame(sampled_data[-train_ind_raw, ])
+```
+
+
+```{r}
+sm_lda <- lda(formula = train_raw.df$Album_type ~ ., data = train_raw.df)
+sm_lda
+```
+
+
+```{r}
+summary(sm_lda)
+```
+The above summary helps us examine the output of our LDA model.
+
+```{r}
+plot(sm_lda)
+```
+
+```{r}
+plot(sm_lda, col = as.integer(train_raw.df$Album_type))
+```
+
+```{r}
+
+
+library(memisc)
+library(ROCR)
+library(klaR)
+library(pROC)
+
+partimat(Album_type ~ Likes+Views+Comments+ Stream , data = train_raw.df, method = "lda")
+```
+
+```{r}
+sm.lda.predict <- predict(sm_lda, data = test_raw.df$Album_type)
+sm.lda.predict$class
+```
+
+```{r}
+sm.lda.predict$x
+```
+
+```{r}
+# Predict class labels for the test dataset
+predicted_labels <- predict(sm_lda, data = test_raw.df)$class
+
+# Calculate accuracy
+actual_labels <- test_raw.df$Album_type
+accuracy <- mean(predicted_labels == actual_labels)
+
+cat("Accuracy:", accuracy, "\n")
+```
+Our LDA model has an accuracy of 0.52 which showcases that it may not be an ideal model. However, as established initially, it can be attributed to the imbalanced dataset that we have.
+
+
+#3)Application of MVA models
+
+#5) Learnings and Takeaways 
+Mean and Variance Analysis (ANOVA)
+Learning: ANOVA is utilized to analyze differences among group means in a sample. You've learned how to test if the means of three or more groups are significantly different using F-statistics.
+Takeaways: This technique is crucial in experiments where you need to determine whether different treatments lead to different outcomes.
+Applications: Commonly used in research and development, quality control, and any field requiring comparison of means across groups (e.g., psychology, agriculture).
+
+Principal Component Analysis (PCA)
+Learning: PCA is a method used to reduce the dimensionality of large data sets, increasing interpretability while minimizing information loss.
+Takeaways: You've learned to transform a large set of variables into a smaller one that still contains most of the information in the large set.
+Applications: Widely used in exploratory data analysis, making predictive models, and in areas like finance for risk management or stock returns analysis.
+
+Clustering
+Learning: Clustering algorithms partition your data into groups with similar features. It's an unsupervised learning method where you don't need pre-labeled classes.
+Takeaways: You've understood how to apply clustering to discover the inherent groupings in the data.
+Applications: Market segmentation, social network analysis, search result grouping, medical imaging, and anomaly detection.
+
+Factor Analysis
+Learning: Factor analysis is used for investigating whether a number of variables of interest Y1, Y2, ..., Yk, are linearly related to a smaller number of unobservable factors.
+Takeaways: This technique helps in data reduction and in identifying hidden factors that affect data.
+Applications: Used in psychometrics, behavioral sciences, marketing, product management, and operations research.
+
+Multiple Regression Analysis
+Learning: This method involves modeling the relationship between a dependent variable and several independent variables.
+Takeaways: It's key for predicting the outcome of a dependent variable based on the values of multiple other variables.
+Applications: Economic forecasting, risk management, and optimizing business processes.
+
+Logistic Regression
+Learning: Unlike linear regression, logistic regression is used when the dependent variable is binary.
+Takeaways: It's essential for classification problems and for estimating the probability of a binary outcome.
+Applications: Medical fields (e.g., predicting disease diagnostics), finance (e.g., credit scoring), and social sciences.
+
+Discriminant Analysis
+Learning: This is used to distinguish distinct sets of variables by assigning a category or group.
+Takeaways: Useful in predicting categorical target variables.
+Applications: Credit risk management, target marketing, and disease diagnosis through medical imaging.
+
